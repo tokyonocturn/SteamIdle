@@ -41,6 +41,7 @@ pub struct App {
     tray: Option<TrayHandle>,
     tooltip: String,
     parked: bool,
+    minimized_seen: bool,
     search: String,
     queue_selected: Option<i64>,
     queue_minutes: u32,
@@ -89,6 +90,7 @@ impl App {
             tray,
             tooltip: String::new(),
             parked: false,
+            minimized_seen: false,
             search: String::new(),
             queue_selected,
             queue_minutes: 30,
@@ -108,6 +110,7 @@ impl App {
     fn show_window(&mut self, ctx: &egui::Context) {
         self.window_visible = true;
         self.parked = false;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
         // Center on the current monitor. Using the viewport's monitor size
         // avoids depending on a remembered position across hide/show cycles.
         let monitor = ctx
@@ -174,6 +177,26 @@ impl App {
                     return;
                 }
             }
+        }
+    }
+
+    /// The dashboard has no taskbar button, so minimizing it would strand it.
+    /// Treat minimize exactly like closing to the tray: restore the window and
+    /// park it, from where the tray can bring it back.
+    fn handle_minimize(&mut self, ctx: &egui::Context) {
+        let minimized = ctx
+            .input(|input| input.viewport().minimized)
+            .unwrap_or(false);
+        if minimized {
+            if !self.minimized_seen {
+                self.minimized_seen = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                if self.window_visible {
+                    self.hide_window(ctx);
+                }
+            }
+        } else {
+            self.minimized_seen = false;
         }
     }
 
@@ -1057,12 +1080,14 @@ impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.first_frame {
             self.first_frame = false;
+            crate::platform::hide_from_taskbar();
             if self.window_visible {
                 self.show_window(ctx);
             } else {
                 self.park(ctx);
             }
         }
+        self.handle_minimize(ctx);
         self.handle_tray(ctx);
         self.handle_close(ctx);
         self.refresh_snapshot();

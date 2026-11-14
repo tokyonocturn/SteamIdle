@@ -20,8 +20,10 @@ use windows_sys::Win32::System::Threading::{
 };
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowW, GetWindowThreadProcessId, IsWindowVisible, MessageBoxW, PostMessageW,
-    SetForegroundWindow, ShowWindow, MB_ICONERROR, MB_OK, SW_RESTORE, SW_SHOWNORMAL, WM_CLOSE,
+    EnumWindows, FindWindowW, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
+    MessageBoxW, PostMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    GWL_EXSTYLE, MB_ICONERROR, MB_OK, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_NOZORDER, SW_RESTORE, SW_SHOWNORMAL, WM_CLOSE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
@@ -79,6 +81,34 @@ pub fn request_show_existing() {
         }
         SetEvent(event);
         CloseHandle(event);
+    }
+}
+
+/// Keep the dashboard out of the taskbar and Alt+Tab. eframe's
+/// `with_taskbar(false)` does not reach this window, so apply the extended
+/// window style directly. The window is already created when this runs.
+pub fn hide_from_taskbar() {
+    unsafe {
+        let title = wide("SteamIdle");
+        let window = FindWindowW(std::ptr::null(), title.as_ptr());
+        if window.is_null() {
+            return;
+        }
+        let ex_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+        let updated = (ex_style | WS_EX_TOOLWINDOW as isize) & !(WS_EX_APPWINDOW as isize);
+        if updated == ex_style {
+            return;
+        }
+        SetWindowLongPtrW(window, GWL_EXSTYLE, updated);
+        SetWindowPos(
+            window,
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+            0,
+            SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER,
+        );
     }
 }
 

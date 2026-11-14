@@ -12,6 +12,9 @@ pub fn single_instance() -> Option<InstanceGuard> {
     Some(InstanceGuard)
 }
 
+/// The XDG stub has no taskbar concept yet.
+pub fn hide_from_taskbar() {}
+
 pub fn request_show_existing() {}
 
 pub fn spawn_show_listener<F>(_on_show: F)

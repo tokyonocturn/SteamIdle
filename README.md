@@ -84,7 +84,7 @@ Queues are intended for legitimate testing of your own library. They cannot add 
 ## Settings
 
 - **Start SteamIdle with Windows** — off by default. Uses `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so no administrator rights are required.
-- **Closing the window hides it to the tray** — on by default. Turn it off if you prefer closing to exit.
+- **Closing the window hides it to the tray** — on by default. Turn it off if you prefer closing to exit. Minimizing the dashboard also sends it to the tray, since the window deliberately has no taskbar button; use **Open SteamIdle** to bring it back.
 - **Check running games every N seconds** — 2 to 30 seconds, default 5.
 - **Data folder** — shows the exact database location and opens it in Explorer.
 
