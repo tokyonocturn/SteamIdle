@@ -8,7 +8,8 @@ use std::process::Command;
 
 use windows_sys::core::BOOL;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_ALREADY_EXISTS, HANDLE, HWND, INVALID_HANDLE_VALUE, LPARAM, WAIT_OBJECT_0,
+    CloseHandle, ERROR_ALREADY_EXISTS, HANDLE, HWND, INVALID_HANDLE_VALUE, LPARAM, RECT,
+    WAIT_OBJECT_0,
 };
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
@@ -20,10 +21,11 @@ use windows_sys::Win32::System::Threading::{
 };
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowW, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
-    MessageBoxW, PostMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    GWL_EXSTYLE, MB_ICONERROR, MB_OK, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SW_RESTORE, SW_SHOWNORMAL, WM_CLOSE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    EnumWindows, FindWindowW, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId,
+    IsWindowVisible, MessageBoxW, PostMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+    ShowWindow, SystemParametersInfoW, GWL_EXSTYLE, HWND_TOP, MB_ICONERROR, MB_OK, SPI_GETWORKAREA,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_RESTORE,
+    SW_SHOWNORMAL, WM_CLOSE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
@@ -85,15 +87,14 @@ pub fn request_show_existing() {
 }
 
 /// Keep the dashboard out of the taskbar and Alt+Tab. eframe's
-/// `with_taskbar(false)` does not reach this window, so apply the extended
-/// window style directly. The window is already created when this runs.
-pub fn hide_from_taskbar() {
+/// `with_taskbar(false)` does not reach this window, and showing it can put
+/// the app-window flag back, so this is checked again on every pass.
+pub fn hide_from_taskbar(hwnd: isize) {
+    if hwnd == 0 {
+        return;
+    }
     unsafe {
-        let title = wide("SteamIdle");
-        let window = FindWindowW(std::ptr::null(), title.as_ptr());
-        if window.is_null() {
-            return;
-        }
+        let window = hwnd as HWND;
         let ex_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
         let updated = (ex_style | WS_EX_TOOLWINDOW as isize) & !(WS_EX_APPWINDOW as isize);
         if updated == ex_style {
@@ -109,6 +110,55 @@ pub fn hide_from_taskbar() {
             0,
             SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER,
         );
+    }
+}
+
+/// Bring the dashboard on screen, centered in the primary work area. Using
+/// Win32 pixels avoids DPI rounding differences between egui points and the
+/// physical window position, which matters after the window was parked.
+pub fn present_window(hwnd: isize) {
+    if hwnd == 0 {
+        return;
+    }
+    unsafe {
+        let window = hwnd as HWND;
+        ShowWindow(window, SW_RESTORE);
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        let mut work = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        if GetWindowRect(window, &mut rect) != 0
+            && SystemParametersInfoW(
+                SPI_GETWORKAREA,
+                0,
+                &mut work as *mut RECT as *mut std::ffi::c_void,
+                0,
+            ) != 0
+        {
+            let width = rect.right - rect.left;
+            let height = rect.bottom - rect.top;
+            let x = work.left + ((work.right - work.left - width) / 2).max(0);
+            let y = work.top + ((work.bottom - work.top - height) / 2).max(0);
+            SetWindowPos(
+                window,
+                HWND_TOP,
+                x,
+                y,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+        SetForegroundWindow(window);
+        crate::logging::info("dashboard shown");
     }
 }
 

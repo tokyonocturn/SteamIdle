@@ -13,7 +13,10 @@ pub fn single_instance() -> Option<InstanceGuard> {
 }
 
 /// The XDG stub has no taskbar concept yet.
-pub fn hide_from_taskbar() {}
+pub fn hide_from_taskbar(_hwnd: isize) {}
+
+/// The XDG stub has no taskbar concept yet.
+pub fn present_window(_hwnd: isize) {}
 
 pub fn request_show_existing() {}
 

@@ -42,6 +42,7 @@ pub struct App {
     tooltip: String,
     parked: bool,
     minimized_seen: bool,
+    hwnd: isize,
     search: String,
     queue_selected: Option<i64>,
     queue_minutes: u32,
@@ -91,6 +92,7 @@ impl App {
             tooltip: String::new(),
             parked: false,
             minimized_seen: false,
+            hwnd: 0,
             search: String::new(),
             queue_selected,
             queue_minutes: 30,
@@ -111,20 +113,15 @@ impl App {
         self.window_visible = true;
         self.parked = false;
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-        // Center on the current monitor. Using the viewport's monitor size
-        // avoids depending on a remembered position across hide/show cycles.
-        let monitor = ctx
-            .input(|input| input.viewport().monitor_size)
-            .unwrap_or(egui::vec2(1920.0, 1080.0));
-        let size = ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size()))
-            .unwrap_or(egui::vec2(1060.0, 680.0));
-        let position = egui::pos2(
-            ((monitor.x - size.x) / 2.0).max(0.0),
-            ((monitor.y - size.y) / 2.0).max(0.0),
-        );
-        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position));
-        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-        crate::logging::info(format!("dashboard shown at {position:?}"));
+        crate::platform::present_window(self.hwnd);
+        if self.hwnd == 0 {
+            // Before the first frame there is no Win32 handle yet; place the
+            // window at a sane point until the handle is available.
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                200.0, 120.0,
+            )));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
     }
 
     /// Park the dashboard off-screen. See `NativeOptions` in `main.rs` for why
@@ -1077,15 +1074,25 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if self.first_frame {
             self.first_frame = false;
-            crate::platform::hide_from_taskbar();
+            if let Some(window) = frame.winit_window() {
+                use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                if let Ok(handle) = window.window_handle() {
+                    if let RawWindowHandle::Win32(win32) = handle.as_raw() {
+                        self.hwnd = win32.hwnd.get();
+                    }
+                }
+            }
             if self.window_visible {
                 self.show_window(ctx);
             } else {
                 self.park(ctx);
             }
+        }
+        if self.hwnd != 0 {
+            crate::platform::hide_from_taskbar(self.hwnd);
         }
         self.handle_minimize(ctx);
         self.handle_tray(ctx);

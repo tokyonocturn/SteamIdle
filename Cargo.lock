@@ -2341,6 +2341,7 @@ dependencies = [
  "chrono",
  "eframe",
  "egui",
+ "raw-window-handle",
  "rusqlite",
  "serde",
  "serde_json",
