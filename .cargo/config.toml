@@ -1,0 +1,4 @@
+# Link the C runtime statically so a single .exe runs on a clean Windows 10/11
+# machine without the Visual C++ redistributable.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
