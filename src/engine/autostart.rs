@@ -18,11 +18,13 @@ mod imp {
     }
 
     pub fn set_enabled(enabled: bool) -> Result<(), String> {
-        let key = RegKey::predef(HKEY_CURRENT_USER)
-            .open_subkey_with_flags(RUN_KEY, KEY_READ | KEY_WRITE)
-            .map_err(|err| format!("open the Windows startup key: {err}"))?;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
 
         if enabled {
+            // A fresh Windows profile may not have a Run key yet, so create it.
+            let (key, _) = hkcu
+                .create_subkey_with_flags(RUN_KEY, KEY_READ | KEY_WRITE)
+                .map_err(|err| format!("create the Windows startup key: {err}"))?;
             let command = format!(
                 "\"{}\" --tray",
                 std::env::current_exe()
@@ -32,6 +34,11 @@ mod imp {
             key.set_value(AUTOSTART_VALUE_NAME, &command)
                 .map_err(|err| format!("write the Windows startup entry: {err}"))
         } else {
+            let key = match hkcu.open_subkey_with_flags(RUN_KEY, KEY_READ | KEY_WRITE) {
+                Ok(key) => key,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(err) => return Err(format!("open the Windows startup key: {err}")),
+            };
             match key.delete_value(AUTOSTART_VALUE_NAME) {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -97,11 +104,12 @@ mod tests {
     #[test]
     fn startup_value_roundtrip() {
         let key = RegKey::predef(HKEY_CURRENT_USER)
-            .open_subkey_with_flags(
+            .create_subkey_with_flags(
                 r"Software\Microsoft\Windows\CurrentVersion\Run",
                 KEY_READ | KEY_WRITE,
             )
-            .expect("startup key");
+            .expect("startup key")
+            .0;
 
         key.set_value(TEST_VALUE, &"\"C:\\test\\steamidle.exe\" --tray")
             .expect("write test startup value");
